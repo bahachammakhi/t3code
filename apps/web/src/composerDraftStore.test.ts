@@ -1647,6 +1647,69 @@ describe("composerDraftStore runtime and interaction settings", () => {
   });
 });
 
+describe("composerDraftStore selected skills", () => {
+  const threadId = ThreadId.make("thread-skills");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("defaults to no selected skills", () => {
+    const store = useComposerDraftStore.getState();
+
+    // Touch the draft so it exists, then confirm skills default to empty.
+    store.setRuntimeMode(threadRef, "approval-required");
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.selectedSkillNames).toEqual([]);
+  });
+
+  it("stores an explicit selected skill set", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setSelectedSkillNames(threadRef, ["code-review", "debugging"]);
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.selectedSkillNames).toEqual([
+      "code-review",
+      "debugging",
+    ]);
+  });
+
+  it("toggles a skill name on and off", () => {
+    const store = useComposerDraftStore.getState();
+
+    // Keep the draft alive with an unrelated field so the toggle-off result is
+    // observable rather than removed as an empty skill-only draft.
+    store.setRuntimeMode(threadRef, "approval-required");
+
+    store.toggleSelectedSkillName(threadRef, "code-review");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.selectedSkillNames).toEqual(["code-review"]);
+
+    store.toggleSelectedSkillName(threadRef, "code-review");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.selectedSkillNames).toEqual([]);
+  });
+
+  it("deduplicates skill names when setting an explicit selection", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setSelectedSkillNames(threadRef, ["code-review", "code-review", "debugging"]);
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.selectedSkillNames).toEqual([
+      "code-review",
+      "debugging",
+    ]);
+  });
+
+  it("removes empty skill-only drafts when the selection is cleared", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setSelectedSkillNames(threadRef, ["code-review"]);
+    store.clearSelectedSkillNames(threadRef);
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // createDebouncedStorage
 // ---------------------------------------------------------------------------

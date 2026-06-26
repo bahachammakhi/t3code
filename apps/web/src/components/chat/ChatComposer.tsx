@@ -67,10 +67,13 @@ import {
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
+import { McpServerSelector } from "./McpServerSelector";
+import { SkillSelector } from "./SkillSelector";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ThreadDelegationRoutingButton } from "./ThreadDelegationRouting";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -101,6 +104,7 @@ import {
   LockIcon,
   LockOpenIcon,
   PenLineIcon,
+  WaypointsIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -421,6 +425,8 @@ export interface ChatComposerHandle {
     selectedProvider: ProviderDriverKind;
     selectedModel: string;
     selectedProviderModels: ReadonlyArray<ServerProvider["models"][number]>;
+    delegateEnabled: boolean;
+    selectedSkillNames: string[];
   };
 }
 
@@ -887,6 +893,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  // When on, the next sent message is augmented with a directive telling the
+  // agent to fan out into parallel sub-tasks via the delegate_tasks tool. Kept
+  // in a ref too so the imperative getSendContext() can read the latest value.
+  const [delegateEnabled, setDelegateEnabledState] = useState(false);
+  const delegateEnabledRef = useRef(false);
+  const toggleDelegateEnabled = useCallback(() => {
+    setDelegateEnabledState((previous) => {
+      const next = !previous;
+      delegateEnabledRef.current = next;
+      return next;
+    });
+  }, []);
   const isMobileViewport = useMediaQuery("max-sm");
   const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
 
@@ -2029,6 +2047,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         selectedProvider,
         selectedModel,
         selectedProviderModels,
+        delegateEnabled: delegateEnabledRef.current,
+        selectedSkillNames: composerDraft.selectedSkillNames,
       }),
     }),
     [
@@ -2043,6 +2063,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerElementContextsRef,
       composerPreviewAnnotations,
       composerReviewComments,
+      composerDraft.selectedSkillNames,
       isConnecting,
       isComposerApprovalState,
       pendingUserInputs.length,
@@ -2547,8 +2568,49 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onRuntimeModeChange={handleRuntimeModeChange}
                       onTogglePlanSidebar={togglePlanSidebar}
                     />
+                    <McpServerSelector composerDraftTarget={composerDraftTarget} />
+                    <SkillSelector
+                      composerDraftTarget={composerDraftTarget}
+                      skills={selectedProviderStatus?.skills ?? []}
+                    />
                   </>
                 )}
+
+                <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                          delegateEnabled
+                            ? "bg-violet-500/10 text-violet-400 hover:bg-violet-500/15 hover:text-violet-300"
+                            : "text-muted-foreground/70 hover:text-foreground/80",
+                        )}
+                        size="sm"
+                        type="button"
+                        aria-pressed={delegateEnabled}
+                        onClick={toggleDelegateEnabled}
+                        aria-label="Toggle task delegation"
+                      />
+                    }
+                  >
+                    <WaypointsIcon />
+                    <span className="sr-only sm:not-sr-only">Delegate</span>
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">
+                    {delegateEnabled
+                      ? "Delegation on — your message will fan out into parallel sub-tasks"
+                      : "Delegate: split your message into parallel sub-tasks (different model per task)"}
+                  </TooltipPopup>
+                </Tooltip>
+                {activeThread ? (
+                  <ThreadDelegationRoutingButton
+                    environmentId={activeThread.environmentId}
+                    threadId={activeThread.id}
+                  />
+                ) : null}
               </div>
 
               {/* Right side: send / stop button */}

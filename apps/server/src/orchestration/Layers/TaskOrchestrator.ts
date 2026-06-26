@@ -221,16 +221,16 @@ const makeTaskOrchestrator = Effect.gen(function* () {
         return { results: [] };
       }
       const settings = yield* settingsService.getSettings.pipe(Effect.orDie);
+      // Per-thread routing override wins over the global rules when present.
+      const routing = settings.threadTaskRouting[input.parentThreadId] ?? settings.taskRouting;
       const tasks = input.tasks.slice(0, MAX_DELEGATED_TASKS);
       const concurrency = Math.max(
         1,
         Math.min(input.maxConcurrency ?? DEFAULT_DELEGATION_CONCURRENCY, MAX_DELEGATED_TASKS),
       );
-      const results = yield* Effect.forEach(
-        tasks,
-        (task) => spawnOne(parent, settings.taskRouting, task),
-        { concurrency },
-      );
+      const results = yield* Effect.forEach(tasks, (task) => spawnOne(parent, routing, task), {
+        concurrency,
+      });
       return { results };
     });
 

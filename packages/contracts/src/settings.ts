@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import { ThreadId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -263,9 +263,21 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    skillDirectories: Schema.String.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Skill directories",
+        description:
+          "Extra folders to scan for SKILL.md skills (one per line or comma-separated). Scanned recursively; ~ is expanded.",
+        providerSettingsForm: {
+          placeholder: "~/.claude/plugins",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
   },
   {
-    order: ["binaryPath", "homePath", "launchArgs"],
+    order: ["binaryPath", "homePath", "launchArgs", "skillDirectories"],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
@@ -385,6 +397,44 @@ export const ObservabilitySettings = Schema.Struct({
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
+// ── User-configured MCP servers ────────────────────────────────
+//
+// External Model Context Protocol servers the user registers and can enable
+// per coding thread. Stored server-authoritative; each provider adapter
+// translates the normalized shape below into its own native MCP wiring,
+// merged alongside the internal `t3-code` server.
+
+export const McpServerId = TrimmedNonEmptyString.pipe(Schema.brand("McpServerId"));
+export type McpServerId = typeof McpServerId.Type;
+
+/** stdio = local command process; http/sse = remote URL endpoint. */
+export const McpServerTransport = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("stdio"),
+    command: TrimmedNonEmptyString,
+    args: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+    env: Schema.Record(Schema.String, Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+    ),
+  }),
+  Schema.Struct({
+    kind: Schema.Literals(["http", "sse"]),
+    url: TrimmedNonEmptyString,
+    headers: Schema.Record(Schema.String, Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+    ),
+  }),
+]);
+export type McpServerTransport = typeof McpServerTransport.Type;
+
+export const McpServerConfig = Schema.Struct({
+  id: McpServerId,
+  name: TrimmedNonEmptyString,
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  transport: McpServerTransport,
+});
+export type McpServerConfig = typeof McpServerConfig.Type;
+
 export const DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL = Duration.seconds(30);
 
 export const ServerSettings = Schema.Struct({
@@ -437,6 +487,18 @@ export const ServerSettings = Schema.Struct({
   // sub-task with no match and no explicit selection falls back to the lead
   // thread's model. See TaskModelRouter on the server.
   taskRouting: TaskRoutingSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Per-thread overrides of `taskRouting`, keyed by lead thread id. When a
+  // thread has an entry here, delegation in that thread uses these rules
+  // instead of the global `taskRouting`.
+  threadTaskRouting: Schema.Record(ThreadId, TaskRoutingSettings).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  // User-registered external MCP servers, keyed by `McpServerId`. Enabled
+  // entries are offered to the per-thread composer selector; the chosen ones
+  // are injected into the coding provider for that thread.
+  mcpServers: Schema.Record(McpServerId, McpServerConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -558,6 +620,13 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  // Whole-map replacement, mirroring `providerInstances`: the web UI always
+  // sends the fully-formed map when editing MCP servers.
+  mcpServers: Schema.optionalKey(Schema.Record(McpServerId, McpServerConfig)),
+  // Whole-value replacements for delegation routing. The web UI sends the
+  // fully-formed value when editing global or per-thread routing rules.
+  taskRouting: Schema.optionalKey(TaskRoutingSettings),
+  threadTaskRouting: Schema.optionalKey(Schema.Record(ThreadId, TaskRoutingSettings)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 

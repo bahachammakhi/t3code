@@ -7,6 +7,7 @@ import {
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -37,6 +38,7 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { discoverClaudeSkills, parseSkillDirectories } from "../claudeSkills.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
@@ -739,6 +741,12 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     : undefined;
   const slashCommands = capabilities?.slashCommands ?? [];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+  // Claude's ACP exposes no skills list, so discover SKILL.md skills from disk:
+  // the default ~/.claude/skills plus any user-configured skill directories.
+  // FileSystem isn't in this driver's ambient context, so provide it locally.
+  const skills = yield* discoverClaudeSkills({
+    extraDirs: parseSkillDirectories(claudeSettings.skillDirectories ?? ""),
+  }).pipe(Effect.provide(NodeServices.layer));
 
   if (!capabilities) {
     return buildServerProvider({
@@ -747,6 +755,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       checkedAt,
       models,
       slashCommands: dedupedSlashCommands,
+      skills,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -767,6 +776,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     checkedAt,
     models,
     slashCommands: dedupedSlashCommands,
+    skills,
     probe: {
       installed: true,
       version: parsedVersion,

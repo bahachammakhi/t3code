@@ -166,6 +166,7 @@ import {
   formatElementContextLabel,
 } from "../lib/elementContext";
 import { appendPreviewAnnotationPrompt } from "../lib/previewAnnotation";
+import { applySelectedSkillsToTurnText } from "../lib/skillDirective";
 import { appendReviewCommentsToPrompt, type ReviewCommentContext } from "../reviewCommentContext";
 import { environmentCatalog } from "../connection/catalog";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -1045,6 +1046,9 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
+  );
+  const composerMcpServerIds = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.mcpServerIds ?? null,
   );
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
@@ -3664,6 +3668,17 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
+    // When the composer's Delegate toggle is on, steer the agent to fan the
+    // request out into parallel sub-tasks via the delegate_tasks tool.
+    const messageTextForSendWithDelegate = sendCtx.delegateEnabled
+      ? `${messageTextForSend}\n\n[Delegate this request: use the delegate_tasks tool to break it into independent sub-tasks that run in parallel. Choose a model per sub-task by difficulty (modelHint cheap/balanced/strong) and label planning/design sub-tasks with "plan". For any sub-task that comes back still running, call collect_delegated_tasks. Then synthesize their results into your answer.]`
+      : messageTextForSend;
+    // Steer the agent toward the thread's selected skills by injecting their
+    // `$skillname` directives (skipping any already referenced inline).
+    const messageTextForSendWithSkills = applySelectedSkillsToTurnText(
+      messageTextForSendWithDelegate,
+      sendCtx.selectedSkillNames,
+    );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const outgoingMessageText = formatOutgoingPrompt({
@@ -3671,7 +3686,7 @@ function ChatViewContent(props: ChatViewProps) {
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      text: messageTextForSendWithSkills || IMAGE_ONLY_BOOTSTRAP_PROMPT,
     });
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
@@ -3836,6 +3851,7 @@ function ChatViewContent(props: ChatViewProps) {
           titleSeed: title,
           runtimeMode,
           interactionMode,
+          ...(composerMcpServerIds !== null ? { mcpServerIds: composerMcpServerIds } : {}),
           ...(bootstrap ? { bootstrap } : {}),
           createdAt: messageCreatedAt,
         },
@@ -4177,6 +4193,7 @@ function ChatViewContent(props: ChatViewProps) {
             titleSeed: activeThread.title,
             runtimeMode,
             interactionMode: nextInteractionMode,
+            ...(composerMcpServerIds !== null ? { mcpServerIds: composerMcpServerIds } : {}),
             ...(nextInteractionMode === "default" && activeProposedPlan
               ? {
                   sourceProposedPlan: {
@@ -4316,6 +4333,7 @@ function ChatViewContent(props: ChatViewProps) {
           titleSeed: nextThreadTitle,
           runtimeMode,
           interactionMode: "default",
+          ...(composerMcpServerIds !== null ? { mcpServerIds: composerMcpServerIds } : {}),
           sourceProposedPlan: {
             threadId: activeThread.id,
             planId: activeProposedPlan.id,

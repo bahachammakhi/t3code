@@ -80,6 +80,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+import * as ThreadMcpSelection from "./mcp/ThreadMcpSelection.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -893,13 +894,33 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   ),
                 );
 
-        return startup
+        const enqueue = startup
           .enqueueCommand(dispatchEffect)
           .pipe(
             Effect.mapError((cause) =>
               toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
             ),
           );
+
+        // Snapshot the thread's active MCP servers before the session starts so
+        // adapters can read them when they spawn the provider. The client
+        // re-sends the selection on every turn, so this stays fresh; settings
+        // read failures degrade to "no user MCP servers" rather than blocking.
+        if (normalizedCommand.type === "thread.turn.start") {
+          const { threadId, mcpServerIds } = normalizedCommand;
+          return serverSettings.getSettings.pipe(
+            Effect.map((settings) =>
+              ThreadMcpSelection.setThreadMcpServers(
+                threadId,
+                ThreadMcpSelection.resolveMcpServers(settings, mcpServerIds),
+              ),
+            ),
+            Effect.catch(() => Effect.void),
+            Effect.andThen(enqueue),
+          );
+        }
+
+        return enqueue;
       };
 
       const loadServerConfig = Effect.gen(function* () {

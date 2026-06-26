@@ -83,6 +83,13 @@ export function applyServerSettingsPatch(
     ...(patch.providerInstances !== undefined
       ? { providerInstances: patch.providerInstances }
       : {}),
+    ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
+    // Whole-value replacement so removed thread overrides and shortened rule
+    // arrays apply cleanly instead of deep-merging with the prior value.
+    ...(patch.taskRouting !== undefined ? { taskRouting: patch.taskRouting } : {}),
+    ...(patch.threadTaskRouting !== undefined
+      ? { threadTaskRouting: patch.threadTaskRouting }
+      : {}),
     ...(automaticGitFetchInterval !== undefined ? { automaticGitFetchInterval } : {}),
   };
   if (!selectionPatch) {

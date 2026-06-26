@@ -5,6 +5,7 @@ import {
   type EnvironmentId,
   ModelSelection,
   ProjectId,
+  McpServerId,
   ProviderInstanceId,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -147,6 +148,13 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   activeProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
   runtimeMode: Schema.optionalKey(RuntimeMode),
   interactionMode: Schema.optionalKey(ProviderInteractionMode),
+  // Ids of user-registered MCP servers active for this thread. Absent/null
+  // means "use every enabled server"; an explicit list narrows the selection.
+  mcpServerIds: Schema.optionalKey(Schema.NullOr(Schema.Array(McpServerId))),
+  // Names of provider skills the user selected for this thread. Absent or
+  // empty means "no skills selected" (the off-by-default state); a non-empty
+  // list is injected into the turn as `$skillname` directives at send time.
+  selectedSkillNames: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 type PersistedComposerThreadDraftState = typeof PersistedComposerThreadDraftState.Type;
 
@@ -275,6 +283,14 @@ export interface ComposerThreadDraftState {
   activeProvider: ProviderInstanceId | null;
   runtimeMode: RuntimeMode | null;
   interactionMode: ProviderInteractionMode | null;
+  /** Selected MCP server ids; null means "use every enabled server". */
+  mcpServerIds: McpServerId[] | null;
+  /**
+   * Provider skill names selected for this thread. Empty means "no skills"
+   * (off by default); a non-empty list steers the agent via `$skillname`
+   * directives injected at send time.
+   */
+  selectedSkillNames: string[];
 }
 
 /**
@@ -434,6 +450,20 @@ interface ComposerDraftStoreState {
     threadRef: ComposerThreadTarget,
     interactionMode: ProviderInteractionMode | null | undefined,
   ) => void;
+  /** Set the active MCP server ids for a thread; null clears the selection. */
+  setThreadMcpServerIds: (
+    threadRef: ComposerThreadTarget,
+    mcpServerIds: readonly McpServerId[] | null,
+  ) => void;
+  /** Replace the thread's selected skill names (deduped, order preserved). */
+  setSelectedSkillNames: (
+    threadRef: ComposerThreadTarget,
+    skillNames: readonly string[],
+  ) => void;
+  /** Toggle one skill name on/off for the thread. */
+  toggleSelectedSkillName: (threadRef: ComposerThreadTarget, skillName: string) => void;
+  /** Clear all selected skills for the thread. */
+  clearSelectedSkillNames: (threadRef: ComposerThreadTarget) => void;
   addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => void;
   addImages: (threadRef: ComposerThreadTarget, images: ComposerImageAttachment[]) => void;
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
@@ -558,12 +588,14 @@ const EMPTY_TERMINAL_CONTEXTS: TerminalContextDraft[] = [];
 const EMPTY_ELEMENT_CONTEXTS: ElementContextDraft[] = [];
 const EMPTY_PREVIEW_ANNOTATIONS: PreviewAnnotationPayload[] = [];
 const EMPTY_REVIEW_COMMENTS: ReviewCommentContext[] = [];
+const EMPTY_SKILL_NAMES: string[] = [];
 Object.freeze(EMPTY_IMAGES);
 Object.freeze(EMPTY_IDS);
 Object.freeze(EMPTY_PERSISTED_ATTACHMENTS);
 Object.freeze(EMPTY_ELEMENT_CONTEXTS);
 Object.freeze(EMPTY_PREVIEW_ANNOTATIONS);
 Object.freeze(EMPTY_REVIEW_COMMENTS);
+Object.freeze(EMPTY_SKILL_NAMES);
 const EMPTY_MODEL_SELECTION_BY_PROVIDER: Partial<Record<ProviderDriverKind, ModelSelection>> =
   Object.freeze({});
 const EMPTY_COMPOSER_DRAFT_MODEL_STATE = Object.freeze<ComposerDraftModelState>({
@@ -584,6 +616,8 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   activeProvider: null,
   runtimeMode: null,
   interactionMode: null,
+  mcpServerIds: null,
+  selectedSkillNames: EMPTY_SKILL_NAMES,
 });
 
 /**
@@ -606,6 +640,8 @@ export function createEmptyThreadDraft(): ComposerThreadDraftState {
     activeProvider: null,
     runtimeMode: null,
     interactionMode: null,
+    mcpServerIds: null,
+    selectedSkillNames: [],
   };
 }
 
@@ -678,8 +714,53 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     Object.keys(draft.modelSelectionByProvider).length === 0 &&
     draft.activeProvider === null &&
     draft.runtimeMode === null &&
-    draft.interactionMode === null
+    draft.interactionMode === null &&
+    // `null` means "use every enabled server"; an explicit array (even empty,
+    // meaning "none") is a deliberate selection worth persisting.
+    draft.mcpServerIds === null &&
+    draft.selectedSkillNames.length === 0
   );
+}
+
+/** Trim, drop blanks, and de-duplicate a skill-name list (order preserved). */
+function dedupeSkillNames(skillNames: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of skillNames) {
+    const name = raw.trim();
+    if (name.length === 0 || seen.has(name)) {
+      continue;
+    }
+    seen.add(name);
+    result.push(name);
+  }
+  return result;
+}
+
+function skillNamesEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((value, index) => value === b[index]);
+}
+
+/**
+ * Write `nextDraft` at `threadKey`, dropping the entry entirely when it has
+ * decayed back to an empty draft. Mirrors the inline pattern used by the
+ * existing per-thread setters.
+ */
+function applyDraftUpdate(
+  state: ComposerDraftStoreState,
+  threadKey: string,
+  nextDraft: ComposerThreadDraftState,
+): Pick<ComposerDraftStoreState, "draftsByThreadKey"> {
+  const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+  if (shouldRemoveDraft(nextDraft)) {
+    delete nextDraftsByThreadKey[threadKey];
+  } else {
+    nextDraftsByThreadKey[threadKey] = nextDraft;
+  }
+  return { draftsByThreadKey: nextDraftsByThreadKey };
 }
 
 function normalizeProviderDriverKind(value: unknown): ProviderDriverKind | null {
@@ -1836,7 +1917,8 @@ function partializeComposerDraftStoreState(
       draft.reviewComments.length === 0 &&
       !hasModelData &&
       draft.runtimeMode === null &&
-      draft.interactionMode === null
+      draft.interactionMode === null &&
+      draft.selectedSkillNames.length === 0
     ) {
       continue;
     }
@@ -1895,6 +1977,10 @@ function partializeComposerDraftStoreState(
         : {}),
       ...(draft.runtimeMode ? { runtimeMode: draft.runtimeMode } : {}),
       ...(draft.interactionMode ? { interactionMode: draft.interactionMode } : {}),
+      ...(draft.mcpServerIds !== null ? { mcpServerIds: draft.mcpServerIds } : {}),
+      ...(draft.selectedSkillNames.length > 0
+        ? { selectedSkillNames: draft.selectedSkillNames }
+        : {}),
     };
     persistedDraftsByThreadKey[threadKey] = persistedDraft;
   }
@@ -2132,6 +2218,10 @@ function toHydratedThreadDraft(
     activeProvider,
     runtimeMode: persistedDraft.runtimeMode ?? null,
     interactionMode: persistedDraft.interactionMode ?? null,
+    mcpServerIds: persistedDraft.mcpServerIds ? [...persistedDraft.mcpServerIds] : null,
+    selectedSkillNames: persistedDraft.selectedSkillNames
+      ? [...persistedDraft.selectedSkillNames]
+      : [],
   };
 }
 
@@ -2832,6 +2922,88 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftsByThreadKey[threadKey] = nextDraft;
             }
             return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        setThreadMcpServerIds: (threadRef, mcpServerIds) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          const nextMcpServerIds = mcpServerIds === null ? null : [...mcpServerIds];
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey];
+            if (!existing && nextMcpServerIds === null) {
+              return state;
+            }
+            const base = existing ?? createEmptyThreadDraft();
+            const nextDraft: ComposerThreadDraftState = {
+              ...base,
+              mcpServerIds: nextMcpServerIds,
+            };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        setSelectedSkillNames: (threadRef, skillNames) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          const nextSkillNames = dedupeSkillNames(skillNames);
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey];
+            if (!existing && nextSkillNames.length === 0) {
+              return state;
+            }
+            const base = existing ?? createEmptyThreadDraft();
+            if (skillNamesEqual(base.selectedSkillNames, nextSkillNames)) {
+              return state;
+            }
+            return applyDraftUpdate(state, threadKey, {
+              ...base,
+              selectedSkillNames: nextSkillNames,
+            });
+          });
+        },
+        toggleSelectedSkillName: (threadRef, skillName) => {
+          const name = skillName.trim();
+          if (name.length === 0) {
+            return;
+          }
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          set((state) => {
+            const base = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            const nextSkillNames = base.selectedSkillNames.includes(name)
+              ? base.selectedSkillNames.filter((existing) => existing !== name)
+              : [...base.selectedSkillNames, name];
+            return applyDraftUpdate(state, threadKey, {
+              ...base,
+              selectedSkillNames: nextSkillNames,
+            });
+          });
+        },
+        clearSelectedSkillNames: (threadRef) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey];
+            if (!existing || existing.selectedSkillNames.length === 0) {
+              return state;
+            }
+            return applyDraftUpdate(state, threadKey, {
+              ...existing,
+              selectedSkillNames: [],
+            });
           });
         },
         addImage: (threadRef, image) => {

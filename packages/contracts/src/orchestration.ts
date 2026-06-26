@@ -600,6 +600,9 @@ export const ThreadTurnStartCommand = Schema.Struct({
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
+  // Ids of user-registered MCP servers to activate for this turn. Omit to use
+  // every enabled server; an explicit (possibly empty) array narrows the set.
+  mcpServerIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
   createdAt: IsoDateTime,
