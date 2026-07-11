@@ -63,10 +63,8 @@ export function McpServerSelector({
             <PopoverTrigger
               render={
                 <Button
-                  variant="ghost"
-                  size="sm"
                   type="button"
-                  className="shrink-0 gap-1.5 px-2 font-medium text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                  className="composer-pill shrink-0 gap-1.5"
                   aria-label="MCP servers"
                 />
               }

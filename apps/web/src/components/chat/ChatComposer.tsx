@@ -261,12 +261,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
         >
           <TooltipTrigger
             render={
-              <SelectTrigger
-                variant="ghost"
-                size="sm"
-                className="font-medium"
-                aria-label="Runtime mode"
-              />
+              <SelectTrigger className="composer-pill font-medium" aria-label="Runtime mode" />
             }
           >
             <RuntimeModeIcon className="size-4" />
@@ -1145,6 +1140,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     modelOptions: composerModelOptions?.[selectedInstanceId],
     prompt,
     onPromptChange: setPromptFromTraits,
+    triggerClassName: "composer-pill",
   });
   const pendingPrimaryAction = useMemo(
     () =>
@@ -2092,7 +2088,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     >
       <div
         className={cn(
-          "group rounded-[22px] p-px transition-colors duration-200",
+          "group chat-composer-frame rounded-[22px] p-px transition-all duration-300",
           composerProviderState.composerFrameClassName,
         )}
         onDragEnter={onComposerDragEnter}
@@ -2104,7 +2100,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
-            "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45",
+            "rounded-[20px] border bg-card transition-all duration-300 has-focus-visible:border-ring/45",
             isDragOverComposer ? "border-primary/70 bg-accent/30" : "border-border",
             environmentUnavailable ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
@@ -2524,6 +2520,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   modelOptionsByInstance={modelOptionsByInstance}
                   terminalOpen={terminalOpen}
                   open={isComposerModelPickerOpen}
+                  triggerClassName="composer-pill"
                   {...(composerProviderState.modelPickerIconClassName
                     ? {
                         activeProviderIconClassName: composerProviderState.modelPickerIconClassName,
@@ -2581,12 +2578,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <TooltipTrigger
                     render={
                       <Button
-                        variant="ghost"
                         className={cn(
-                          "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                          "composer-pill shrink-0 whitespace-nowrap",
                           delegateEnabled
-                            ? "bg-violet-500/10 text-violet-400 hover:bg-violet-500/15 hover:text-violet-300"
-                            : "text-muted-foreground/70 hover:text-foreground/80",
+                            ? "bg-violet-500/15! text-violet-400! border-violet-500/40! hover:bg-violet-500/25!"
+                            : "",
                         )}
                         size="sm"
                         type="button"

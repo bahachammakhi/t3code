@@ -660,8 +660,8 @@ export function BranchToolbarBranchSelector({
           </Tooltip>
         ) : null}
         <ComboboxTrigger
-          render={<Button variant="ghost" size="xs" />}
-          className="min-w-0 text-muted-foreground/70 hover:text-foreground/80"
+          render={<Button className="composer-pill" />}
+          className="min-w-0"
           disabled={isInitialBranchesLoadPending || isBranchActionPending}
         >
           <GitBranchIcon className="size-3 shrink-0 opacity-70" />

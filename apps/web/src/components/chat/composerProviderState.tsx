@@ -46,6 +46,8 @@ type TraitsRenderInput = {
   modelOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
   prompt: string;
   onPromptChange: (prompt: string) => void;
+  triggerClassName?: string;
+  triggerVariant?: string;
 };
 
 export function getComposerPromptInjectionState(prompt: string): ComposerPromptInjectionState {
@@ -94,6 +96,8 @@ function renderTraitsControl(
     modelOptions,
     prompt,
     onPromptChange,
+    triggerClassName,
+    triggerVariant,
   } = input;
   const hasTarget = threadRef !== undefined || draftId !== undefined;
   if (
@@ -113,6 +117,8 @@ function renderTraitsControl(
       modelOptions={modelOptions}
       prompt={prompt}
       onPromptChange={onPromptChange}
+      {...(triggerClassName ? { triggerClassName } : {})}
+      {...(triggerVariant ? { triggerVariant: triggerVariant as any } : {})}
     />
   );
 }

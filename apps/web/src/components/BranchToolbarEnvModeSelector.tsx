@@ -63,7 +63,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       onValueChange={(value) => onEnvModeChange(value as EnvMode)}
       items={envModeItems}
     >
-      <SelectTrigger variant="ghost" size="xs" className="font-medium" aria-label="Workspace">
+      <SelectTrigger className="composer-pill font-medium" aria-label="Workspace">
         {effectiveEnvMode === "worktree" ? (
           <FolderGit2Icon className="size-3" />
         ) : activeWorktreePath ? (
