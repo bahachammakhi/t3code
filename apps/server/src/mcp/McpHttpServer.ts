@@ -217,7 +217,7 @@ const DelegationToolkitRegistrationLive = McpServer.toolkit(DelegationToolkit).p
 );
 
 const McpTransportLive = McpServer.layerHttp({
-  name: "T3 Code",
+  name: "B3 Code",
   version: packageJson.version,
   path: "/mcp",
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
