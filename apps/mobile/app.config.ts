@@ -22,7 +22,7 @@ const VARIANT_CONFIG: Record<
   }
 > = {
   development: {
-    appName: "T3 Code Dev",
+    appName: "B3 Code Dev",
     scheme: "t3code-dev",
     iosIcon: "./assets/icon-composer-dev.icon",
     splashIcon: "./assets/splash-icon-dev.png",
@@ -31,7 +31,7 @@ const VARIANT_CONFIG: Record<
     relyingParty: "clerk.t3.codes",
   },
   preview: {
-    appName: "T3 Code Preview",
+    appName: "B3 Code Preview",
     scheme: "t3code-preview",
     iosIcon: "./assets/icon-composer-prod.icon",
     splashIcon: "./assets/splash-icon-prod.png",
@@ -40,7 +40,7 @@ const VARIANT_CONFIG: Record<
     relyingParty: "clerk.t3.codes",
   },
   production: {
-    appName: "T3 Code",
+    appName: "B3 Code",
     scheme: "t3code",
     iosIcon: "./assets/icon-composer-prod.icon",
     splashIcon: "./assets/splash-icon-prod.png",
@@ -112,7 +112,7 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
+        "Allow B3 Code to connect to B3 Code servers on your local network or tailnet.",
       ITSAppUsesNonExemptEncryption: false,
     },
   },
@@ -162,7 +162,7 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission: "Allow B3 Code to access your camera so you can scan pairing QR codes.",
         barcodeScannerEnabled: true,
       },
     ],
@@ -212,7 +212,7 @@ const config: ExpoConfig = {
           {
             name: "AgentActivity",
             displayName: "Agent Activity",
-            description: "Shows the current state of active T3 Code agents.",
+            description: "Shows the current state of active B3 Code agents.",
             supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"],
           },
         ],
