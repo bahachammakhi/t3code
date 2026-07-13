@@ -136,6 +136,8 @@ interface TimelineRowSharedState {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorElement?: HTMLElement) => void;
+  delegatedSubagentCount: number;
+  onOpenDelegatedSubagents?: (() => void) | undefined;
 }
 
 interface TimelineRowActivityState {
@@ -181,6 +183,8 @@ interface MessagesTimelineProps {
   contentInsetEndAdjustment: number;
   onIsAtEndChange: (isAtEnd: boolean) => void;
   onManualNavigation: () => void;
+  delegatedSubagentCount?: number;
+  onOpenDelegatedSubagents?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +218,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   contentInsetEndAdjustment,
   onIsAtEndChange,
   onManualNavigation,
+  delegatedSubagentCount = 0,
+  onOpenDelegatedSubagents,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
@@ -423,6 +429,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
+      delegatedSubagentCount,
+      onOpenDelegatedSubagents,
     }),
     [
       timestampFormat,
@@ -437,6 +445,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
+      delegatedSubagentCount,
+      onOpenDelegatedSubagents,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1423,7 +1433,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
         >
           <UserMessageBody
             text={props.text}
-            delegated={props.delegated}
+            {...(props.delegated === true ? { delegated: true } : {})}
             terminalContexts={props.terminalContexts}
             skills={props.skills}
             markdownCwd={props.markdownCwd}
@@ -1478,7 +1488,11 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   const wrapDelegatedInlineContent = (content: ReactNode) =>
     props.delegated === true ? (
       <p className="m-0 whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
-        <DelegateInlineChip className="mr-1.5" />
+        <DelegateInlineChip
+          className="mr-1.5"
+          subagentCount={ctx.delegatedSubagentCount}
+          {...(ctx.onOpenDelegatedSubagents ? { onClick: ctx.onOpenDelegatedSubagents } : {})}
+        />
         <span className="inline align-middle">{content}</span>
       </p>
     ) : (

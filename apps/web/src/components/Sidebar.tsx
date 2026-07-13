@@ -7,6 +7,7 @@ import {
   FolderPlusIcon,
   Globe2Icon,
   LoaderIcon,
+  PanelRightOpenIcon,
   SearchIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -123,6 +124,7 @@ import {
   resolveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
+import { useRightPanelStore } from "../rightPanelStore";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
@@ -243,6 +245,8 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
 };
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
+const SIDEBAR_ROW_HOVER_ACTION_CLASS =
+  "pointer-events-none absolute top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100";
 
 function SidebarThreadDetailPrewarmer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   useEnvironmentThread(threadRef.environmentId, threadRef.threadId);
@@ -671,6 +675,18 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     },
     [attemptArchiveThread, threadRef],
   );
+  const handleOpenSubagentBesideParent = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const parentThreadId = thread.parentThreadId;
+      if (!parentThreadId) return;
+      const parentRef = scopeThreadRef(thread.environmentId, parentThreadId);
+      useRightPanelStore.getState().openSubagent(parentRef, thread.id);
+      navigateToThread(parentRef);
+    },
+    [navigateToThread, thread.environmentId, thread.id, thread.parentThreadId],
+  );
   const rowButtonRender = useMemo(() => <div role="button" tabIndex={0} />, []);
 
   return (
@@ -798,6 +814,32 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
               isRemoteThread ? "max-sm:min-w-24" : "max-sm:min-w-20"
             }`}
           >
+            {isDelegatedChild && !isConfirmingArchive ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      className={`${SIDEBAR_ROW_HOVER_ACTION_CLASS} ${
+                        !isThreadRunning ? "right-7" : "right-0.5"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        data-thread-selection-safe
+                        data-testid={`thread-open-beside-parent-${thread.id}`}
+                        aria-label={`Open ${thread.taskLabel ?? thread.title} beside parent thread`}
+                        className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                        onPointerDown={stopPropagationOnPointerDown}
+                        onClick={handleOpenSubagentBesideParent}
+                      >
+                        <PanelRightOpenIcon className="size-3.5" aria-hidden />
+                      </button>
+                    </div>
+                  }
+                />
+                <TooltipPopup side="top">Open beside parent thread</TooltipPopup>
+              </Tooltip>
+            ) : null}
             {isConfirmingArchive ? (
               <button
                 ref={handleConfirmArchiveRef}
@@ -813,7 +855,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
               </button>
             ) : !isThreadRunning ? (
               appSettingsConfirmThreadArchive ? (
-                <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
+                <div className={`${SIDEBAR_ROW_HOVER_ACTION_CLASS} right-0.5`}>
                   <button
                     type="button"
                     data-thread-selection-safe
@@ -830,7 +872,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
+                      <div className={`${SIDEBAR_ROW_HOVER_ACTION_CLASS} right-0.5`}>
                         <button
                           type="button"
                           data-thread-selection-safe
