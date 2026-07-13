@@ -80,6 +80,7 @@ import {
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
+import { DelegateInlineChip } from "./DelegateInlineChip";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -94,6 +95,7 @@ import {
   extractTrailingPreviewAnnotation,
   type ParsedPreviewAnnotation,
 } from "~/lib/previewAnnotation";
+
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -843,6 +845,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     ...displayedUserMessage.elementContexts,
     ...elementContextState.contexts,
   ];
+  const copyText = displayedUserMessage.copyText;
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
@@ -902,6 +905,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         ) : null}
         <CollapsibleUserMessageBody
           text={elementContextState.promptText}
+          delegated={displayedUserMessage.delegated}
           terminalContexts={terminalContexts}
           skills={ctx.skills}
           markdownCwd={ctx.markdownCwd}
@@ -919,9 +923,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           </Tooltip>
           <div className="flex items-center gap-0.5">
             {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
-            {displayedUserMessage.copyText && (
-              <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
-            )}
+            {copyText && <MessageCopyButton text={copyText} variant="ghost" />}
           </div>
         </div>
       </div>
@@ -1389,13 +1391,15 @@ function shouldCollapseUserMessage(text: string): boolean {
 
 const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(props: {
   text: string;
+  delegated?: boolean;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
   footer?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const hasVisibleBody = props.text.trim().length > 0 || props.terminalContexts.length > 0;
+  const hasVisibleBody =
+    props.text.trim().length > 0 || props.terminalContexts.length > 0 || props.delegated === true;
   const canCollapse = hasVisibleBody && shouldCollapseUserMessage(props.text);
   const isCollapsed = canCollapse && !expanded;
 
@@ -1419,6 +1423,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
         >
           <UserMessageBody
             text={props.text}
+            delegated={props.delegated}
             terminalContexts={props.terminalContexts}
             skills={props.skills}
             markdownCwd={props.markdownCwd}
@@ -1455,13 +1460,32 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   );
 });
 
+const USER_MESSAGE_INLINE_MARKDOWN_CLASS =
+  "!inline !w-auto !max-w-none min-w-0 align-middle [&_p]:inline [&_p]:m-0 [&_p]:leading-relaxed";
+
+function isPlainDelegatedMessageText(text: string): boolean {
+  return !/[#*`\[\]<>]|^\s*[-*+]\s/m.test(text);
+}
+
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;
+  delegated?: boolean;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
+  const wrapDelegatedInlineContent = (content: ReactNode) =>
+    props.delegated === true ? (
+      <p className="m-0 whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
+        <DelegateInlineChip className="mr-1.5" />
+        <span className="inline align-middle">{content}</span>
+      </p>
+    ) : (
+      <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
+        {content}
+      </div>
+    );
   const renderInlineMarkdownSegment = (text: string, key: string) => {
     const leadingWhitespace = /^\s+/.exec(text)?.[0] ?? "";
     const textWithoutLeadingWhitespace = text.slice(leadingWhitespace.length);
@@ -1480,7 +1504,10 @@ const UserMessageBody = memo(function UserMessageBody(props: {
             cwd={props.markdownCwd}
             threadRef={ctx.threadRef ?? undefined}
             skills={props.skills}
-            className="text-foreground"
+            className={cn(
+              "text-foreground",
+              props.delegated ? USER_MESSAGE_INLINE_MARKDOWN_CLASS : null,
+            )}
             lineBreaks
           />
         ) : null}
@@ -1560,11 +1587,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           );
         }
 
-        return (
-          <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
-            {inlineNodes}
-          </div>
-        );
+        return wrapDelegatedInlineContent(inlineNodes);
       }
     }
 
@@ -1590,34 +1613,39 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           cwd={props.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
           skills={props.skills}
-          className="text-foreground"
+          className={cn(
+            "text-foreground",
+            props.delegated ? USER_MESSAGE_INLINE_MARKDOWN_CLASS : null,
+          )}
           lineBreaks
         />,
       );
     } else if (inlinePrefix.length === 0) {
-      return null;
+      return props.delegated ? wrapDelegatedInlineContent(null) : null;
     }
 
-    return (
-      <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
-        {inlineNodes}
-      </div>
-    );
+    return wrapDelegatedInlineContent(inlineNodes);
   }
 
   if (props.text.length === 0) {
-    return null;
+    return props.delegated ? wrapDelegatedInlineContent(null) : null;
   }
 
-  return (
+  if (props.delegated && isPlainDelegatedMessageText(props.text)) {
+    return wrapDelegatedInlineContent(
+      <span className="whitespace-pre-wrap text-foreground">{props.text}</span>,
+    );
+  }
+
+  return wrapDelegatedInlineContent(
     <ChatMarkdown
       text={props.text}
       cwd={props.markdownCwd}
       threadRef={ctx.threadRef ?? undefined}
       skills={props.skills}
-      className="text-foreground"
+      className={cn("text-foreground", props.delegated ? USER_MESSAGE_INLINE_MARKDOWN_CLASS : null)}
       lineBreaks
-    />
+    />,
   );
 });
 

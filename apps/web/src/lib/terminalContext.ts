@@ -1,6 +1,8 @@
 import { type ThreadId } from "@t3tools/contracts";
 
 import { extractTrailingElementContexts, type ParsedElementContextEntry } from "./elementContext";
+import { stripLeadingSkillDirective } from "./skillDirective";
+import { stripTrailingDelegateRequest } from "./taskDelegationPrompt";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -26,6 +28,7 @@ export interface ExtractedTerminalContexts {
 export interface DisplayedUserMessageState {
   visibleText: string;
   copyText: string;
+  delegated: boolean;
   contextCount: number;
   previewTitle: string | null;
   contexts: ParsedTerminalContextEntry[];
@@ -246,14 +249,23 @@ export function extractTrailingTerminalContexts(prompt: string): ExtractedTermin
 }
 
 export function deriveDisplayedUserMessageState(prompt: string): DisplayedUserMessageState {
+  // Delegate suffix is always appended last at send time — strip it first so
+  // trailing `<element_context>` / `<terminal_context>` blocks can still be
+  // parsed when present.
+  const extractedDelegate = stripTrailingDelegateRequest(prompt);
+  const withoutSkillDirective = stripLeadingSkillDirective(extractedDelegate.promptText);
   // Order matters: send-time appends `<terminal_context>` first, then
   // `<element_context>` last. Strip element first so the (now-trailing)
   // terminal block can be matched by `extractTrailingTerminalContexts`.
-  const extractedElement = extractTrailingElementContexts(prompt);
+  const extractedElement = extractTrailingElementContexts(withoutSkillDirective);
   const extractedTerminal = extractTrailingTerminalContexts(extractedElement.promptText);
+  const copyText = extractedDelegate.delegated
+    ? stripLeadingSkillDirective(extractedDelegate.promptText)
+    : prompt;
   return {
     visibleText: extractedTerminal.promptText,
-    copyText: prompt,
+    copyText,
+    delegated: extractedDelegate.delegated,
     contextCount: extractedTerminal.contextCount,
     previewTitle: extractedTerminal.previewTitle,
     contexts: extractedTerminal.contexts,

@@ -93,8 +93,8 @@ export function ThreadDelegationRoutingButton({
             className={cn(
               "shrink-0 px-2",
               hasOverride
-                ? "text-violet-400 hover:text-violet-300"
-                : "text-muted-foreground/70 hover:text-foreground/80",
+                ? "text-[#ffd700] hover:text-[#fff4c2]"
+                : "text-[#c9a227]/70 hover:text-[#d4af37]",
             )}
           />
         }

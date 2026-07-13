@@ -74,6 +74,12 @@ import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommand
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ThreadDelegationRoutingButton } from "./ThreadDelegationRouting";
+import { DelegateSettingsPopover } from "./DelegateSettingsPanel";
+import {
+  type DelegateRequestSettings,
+  sanitizeDelegateModelSelection,
+} from "../../lib/taskDelegationPrompt";
+import { resolveAppModelSelectionForInstance } from "../../modelSelection";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -104,7 +110,6 @@ import {
   LockIcon,
   LockOpenIcon,
   PenLineIcon,
-  WaypointsIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -421,6 +426,7 @@ export interface ChatComposerHandle {
     selectedModel: string;
     selectedProviderModels: ReadonlyArray<ServerProvider["models"][number]>;
     delegateEnabled: boolean;
+    delegateSettings: DelegateRequestSettings | null;
     selectedSkillNames: string[];
   };
 }
@@ -887,13 +893,69 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // in a ref too so the imperative getSendContext() can read the latest value.
   const [delegateEnabled, setDelegateEnabledState] = useState(false);
   const delegateEnabledRef = useRef(false);
-  const toggleDelegateEnabled = useCallback(() => {
-    setDelegateEnabledState((previous) => {
-      const next = !previous;
-      delegateEnabledRef.current = next;
-      return next;
-    });
+  const [delegateSubagentCount, setDelegateSubagentCountState] = useState(3);
+  const delegateSubagentCountRef = useRef(3);
+  const [delegateSubagentInstanceId, setDelegateSubagentInstanceIdState] =
+    useState<ProviderInstanceId>(selectedInstanceId);
+  const delegateSubagentInstanceIdRef = useRef<ProviderInstanceId>(selectedInstanceId);
+  const [delegateSubagentModel, setDelegateSubagentModelState] = useState(selectedModel);
+  const delegateSubagentModelRef = useRef(selectedModel);
+  const handleDelegateEnabledChange = useCallback(
+    (enabled: boolean) => {
+      delegateEnabledRef.current = enabled;
+      setDelegateEnabledState(enabled);
+      if (enabled) {
+        const resolvedModel =
+          resolveAppModelSelectionForInstance(
+            selectedInstanceId,
+            settings,
+            providerStatuses,
+            selectedModelForPickerWithCustomFallback,
+          ) ?? selectedModelForPickerWithCustomFallback;
+        delegateSubagentInstanceIdRef.current = selectedInstanceId;
+        delegateSubagentModelRef.current = resolvedModel;
+        setDelegateSubagentInstanceIdState(selectedInstanceId);
+        setDelegateSubagentModelState(resolvedModel);
+      }
+    },
+    [providerStatuses, selectedInstanceId, selectedModelForPickerWithCustomFallback, settings],
+  );
+  const handleDelegateSubagentCountChange = useCallback((count: number) => {
+    delegateSubagentCountRef.current = count;
+    setDelegateSubagentCountState(count);
   }, []);
+  const handleDelegateSubagentModelChange = useCallback(
+    (instanceId: ProviderInstanceId, model: string) => {
+      const resolvedModel =
+        resolveAppModelSelectionForInstance(instanceId, settings, providerStatuses, model) ?? model;
+      delegateSubagentInstanceIdRef.current = instanceId;
+      delegateSubagentModelRef.current = resolvedModel;
+      setDelegateSubagentInstanceIdState(instanceId);
+      setDelegateSubagentModelState(resolvedModel);
+    },
+    [providerStatuses, settings],
+  );
+  const delegateSubagentDriver = useMemo(
+    () =>
+      resolveProviderDriverKindForInstanceSelection(
+        providerInstanceEntries,
+        providerStatuses,
+        delegateSubagentInstanceId,
+      ) ?? ProviderDriverKind.make("codex"),
+    [delegateSubagentInstanceId, providerInstanceEntries, providerStatuses],
+  );
+  const delegateSubagentModelForPicker = useMemo(() => {
+    const currentOptions = modelOptionsByInstance.get(delegateSubagentInstanceId) ?? [];
+    return currentOptions.some((option) => option.slug === delegateSubagentModel)
+      ? delegateSubagentModel
+      : (normalizeModelSlug(delegateSubagentModel, delegateSubagentDriver) ??
+          delegateSubagentModel);
+  }, [
+    delegateSubagentDriver,
+    delegateSubagentInstanceId,
+    delegateSubagentModel,
+    modelOptionsByInstance,
+  ]);
   const isMobileViewport = useMediaQuery("max-sm");
   const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
 
@@ -2022,6 +2084,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         selectedModel,
         selectedProviderModels,
         delegateEnabled: delegateEnabledRef.current,
+        delegateSettings: delegateEnabledRef.current
+          ? {
+              subagentCount: delegateSubagentCountRef.current,
+              modelSelection: sanitizeDelegateModelSelection({
+                instanceId: delegateSubagentInstanceIdRef.current,
+                model: delegateSubagentModelRef.current,
+              }),
+            }
+          : null,
         selectedSkillNames: composerDraft.selectedSkillNames,
       }),
     }),
@@ -2492,7 +2563,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   activeInstanceId={selectedInstanceId}
                   model={selectedModelForPickerWithCustomFallback}
                   lockedProvider={lockedProvider}
-                  lockedContinuationGroupKey={lockedContinuationGroupKey}
+                  lockedContinuationGroupKey={lockedContinuationGroupKey ?? null}
                   instanceEntries={providerInstanceEntries}
                   keybindings={keybindings}
                   modelOptionsByInstance={modelOptionsByInstance}
@@ -2552,33 +2623,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
 
                 <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        className={cn(
-                          "composer-pill shrink-0 whitespace-nowrap",
-                          delegateEnabled
-                            ? "bg-violet-500/15! text-violet-400! border-violet-500/40! hover:bg-violet-500/25!"
-                            : "",
-                        )}
-                        size="sm"
-                        type="button"
-                        aria-pressed={delegateEnabled}
-                        onClick={toggleDelegateEnabled}
-                        aria-label="Toggle task delegation"
-                      />
-                    }
-                  >
-                    <WaypointsIcon />
-                    <span className="sr-only sm:not-sr-only">Delegate</span>
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">
-                    {delegateEnabled
-                      ? "Delegation on — your message will fan out into parallel sub-tasks"
-                      : "Delegate: split your message into parallel sub-tasks (different model per task)"}
-                  </TooltipPopup>
-                </Tooltip>
+                <DelegateSettingsPopover
+                  delegateEnabled={delegateEnabled}
+                  onDelegateEnabledChange={handleDelegateEnabledChange}
+                  subagentCount={delegateSubagentCount}
+                  subagentInstanceId={delegateSubagentInstanceId}
+                  subagentModel={delegateSubagentModelForPicker}
+                  lockedProvider={lockedProvider}
+                  lockedContinuationGroupKey={lockedContinuationGroupKey ?? null}
+                  instanceEntries={providerInstanceEntries}
+                  keybindings={keybindings}
+                  modelOptionsByInstance={modelOptionsByInstance}
+                  terminalOpen={terminalOpen}
+                  onSubagentCountChange={handleDelegateSubagentCountChange}
+                  onSubagentModelChange={handleDelegateSubagentModelChange}
+                />
                 {activeThread ? (
                   <ThreadDelegationRoutingButton
                     environmentId={activeThread.environmentId}
