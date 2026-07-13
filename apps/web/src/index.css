@@ -892,8 +892,18 @@ label:has(> select#reasoning-effort) select {
   background: rgba(255, 255, 255, 0.15);
 }
 
+@keyframes composer-gold-top-sweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
 /* Chat Composer Redesign Styles */
 .chat-composer-frame {
+  position: relative;
   background-color: color-mix(in srgb, var(--border) 40%, transparent);
   box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.2);
 }
@@ -903,18 +913,50 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-composer-frame:focus-within {
-  background-image: linear-gradient(
-    135deg,
-    rgba(59, 130, 246, 0.35) 0%,
-    rgba(99, 102, 241, 0.35) 50%,
-    rgba(168, 85, 247, 0.35) 100%
-  );
+  background-color: color-mix(in srgb, var(--border) 55%, transparent);
   box-shadow:
     0 12px 36px -12px rgba(0, 0, 0, 0.4),
-    0 0 20px -3px rgba(99, 102, 241, 0.2);
+    0 0 18px -6px rgba(212, 175, 55, 0.28);
+}
+
+.chat-composer-frame:focus-within:not(.ultrathink-frame)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1px;
+  background-image: linear-gradient(
+    90deg,
+    #6b520f 0%,
+    #8b6914 10%,
+    #c9a227 20%,
+    #d4af37 30%,
+    #ffd700 40%,
+    #fff4c2 50%,
+    #ffd700 60%,
+    #d4af37 70%,
+    #c9a227 80%,
+    #8b6914 90%,
+    #6b520f 100%
+  );
+  background-size: 200% 100%;
+  pointer-events: none;
+  filter: saturate(1.12) brightness(1.1);
+  clip-path: inset(0 0 85% 0 round 22px 22px 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: composer-gold-top-sweep 4s linear infinite;
 }
 
 .chat-composer-frame:focus-within > div {
+  position: relative;
   border-color: transparent !important;
 }
 

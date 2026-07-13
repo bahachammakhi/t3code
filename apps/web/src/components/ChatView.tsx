@@ -150,7 +150,7 @@ import {
 } from "~/projectScripts";
 import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import { getProviderModelCapabilities, resolveSelectableProvider } from "../providerModels";
-import { useEnvironmentSettings } from "../hooks/useSettings";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../hooks/useSettings";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
@@ -177,6 +177,10 @@ import {
   formatElementContextLabel,
 } from "../lib/elementContext";
 import { appendPreviewAnnotationPrompt } from "../lib/previewAnnotation";
+import {
+  appendDelegateRequestToPrompt,
+  sanitizeDelegateModelSelection,
+} from "../lib/taskDelegationPrompt";
 import { applySelectedSkillsToTurnText } from "../lib/skillDirective";
 import { appendReviewCommentsToPrompt, type ReviewCommentContext } from "../reviewCommentContext";
 import { environmentCatalog } from "../connection/catalog";
@@ -1042,6 +1046,7 @@ function ChatViewContent(props: ChatViewProps) {
     routeKind === "server" ? store.threadLastVisitedAtById[routeThreadKey] : undefined,
   );
   const settings = useEnvironmentSettings(environmentId);
+  const updateEnvironmentSettings = useUpdateEnvironmentSettings(environmentId);
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
   );
@@ -4004,11 +4009,25 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
-    // When the composer's Delegate toggle is on, steer the agent to fan the
-    // request out into parallel sub-tasks via the delegate_tasks tool.
-    const messageTextForSendWithDelegate = sendCtx.delegateEnabled
-      ? `${messageTextForSend}\n\n[Delegate this request: use the delegate_tasks tool to break it into independent sub-tasks that run in parallel. Choose a model per sub-task by difficulty (modelHint cheap/balanced/strong) and label planning/design sub-tasks with "plan". For any sub-task that comes back still running, call collect_delegated_tasks. Then synthesize their results into your answer.]`
-      : messageTextForSend;
+    if (sendCtx.delegateEnabled && sendCtx.delegateSettings && isServerThread) {
+      const subagentModelSelection = sanitizeDelegateModelSelection(
+        sendCtx.delegateSettings.modelSelection,
+      );
+      updateEnvironmentSettings({
+        threadTaskRouting: {
+          ...(settings.threadTaskRouting ?? {}),
+          [threadIdForSend]: {
+            rules: [],
+            default: subagentModelSelection,
+          },
+        },
+      });
+    }
+    const messageTextForSendWithDelegate = appendDelegateRequestToPrompt(
+      messageTextForSend,
+      sendCtx.delegateEnabled,
+      sendCtx.delegateSettings ?? undefined,
+    );
     // Steer the agent toward the thread's selected skills by injecting their
     // `$skillname` directives (skipping any already referenced inline).
     const messageTextForSendWithSkills = applySelectedSkillsToTurnText(

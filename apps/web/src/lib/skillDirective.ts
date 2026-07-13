@@ -8,7 +8,19 @@
 // already typed inline is not duplicated in the directive.
 const SKILL_TOKEN_REGEX = /(^|\s)\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s|$)/g;
 
-const SKILL_DIRECTIVE_PREFIX = "Use these skills for this turn:";
+export const SKILL_DIRECTIVE_PREFIX = "Use these skills for this turn:";
+
+/** Hide the auto-prepended skill directive in rendered user messages. */
+export function stripLeadingSkillDirective(text: string): string {
+  if (!text.startsWith(SKILL_DIRECTIVE_PREFIX)) {
+    return text;
+  }
+  const splitIndex = text.indexOf("\n\n");
+  if (splitIndex === -1) {
+    return "";
+  }
+  return text.slice(splitIndex + 2).trimStart();
+}
 
 /** Names of skills already referenced as `$name` tokens in `prompt`. */
 export function findInlineSkillNames(prompt: string): Set<string> {

@@ -1,6 +1,7 @@
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { appendDelegateRequestToPrompt, DELEGATE_REQUEST_SUFFIX } from "./taskDelegationPrompt";
 import {
   appendTerminalContextsToPrompt,
   buildTerminalContextPreviewTitle,
@@ -114,6 +115,7 @@ describe("terminalContext", () => {
     expect(deriveDisplayedUserMessageState(prompt)).toEqual({
       visibleText: "Investigate this",
       copyText: prompt,
+      delegated: false,
       contextCount: 1,
       previewTitle: "Terminal 1 lines 12-13\n12 | git status\n13 | On branch main",
       contexts: [
@@ -124,6 +126,19 @@ describe("terminalContext", () => {
       ],
       elementContexts: [],
     });
+  });
+
+  it("strips delegate suffix before parsing trailing terminal context", () => {
+    const prompt = appendDelegateRequestToPrompt(
+      appendTerminalContextsToPrompt("hello", [makeContext()]),
+      true,
+    );
+    expect(deriveDisplayedUserMessageState(prompt)).toMatchObject({
+      visibleText: "hello",
+      delegated: true,
+      contextCount: 1,
+    });
+    expect(prompt.endsWith(DELEGATE_REQUEST_SUFFIX)).toBe(true);
   });
 
   it("preserves prompt text when no trailing terminal context block exists", () => {
