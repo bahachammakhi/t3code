@@ -181,6 +181,7 @@ import {
   appendDelegateRequestToPrompt,
   sanitizeDelegateModelSelection,
 } from "../lib/taskDelegationPrompt";
+import { getDelegatedChildrenForParent } from "../lib/delegatedSubagents";
 import { applySelectedSkillsToTurnText } from "../lib/skillDirective";
 import { appendReviewCommentsToPrompt, type ReviewCommentContext } from "../reviewCommentContext";
 import { environmentCatalog } from "../connection/catalog";
@@ -203,12 +204,14 @@ import {
   useThread,
   useThreadProposedPlans,
   useThreadRefs,
+  useThreadShellsForProjectRefs,
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
+import { DelegatedSubagentPanel } from "./chat/DelegatedSubagentPanel";
 import { ChatHeader } from "./chat/ChatHeader";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
@@ -1390,6 +1393,16 @@ function ChatViewContent(props: ChatViewProps) {
     ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
     : null;
   const activeProject = useProject(activeProjectRef);
+  const projectThreadShells = useThreadShellsForProjectRefs(
+    activeProjectRef ? [activeProjectRef] : [],
+  );
+  const delegatedSubagentChildren = useMemo(
+    () =>
+      activeThread && isServerThread
+        ? getDelegatedChildrenForParent(projectThreadShells, activeThread.id)
+        : [],
+    [activeThread, isServerThread, projectThreadShells],
+  );
   const activeEnvironmentShell = useEnvironmentQuery(
     activeThread ? environmentShell.stateAtom(activeThread.environmentId) : null,
   );
@@ -2913,6 +2926,13 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [activeRightPanelSurface, activeThreadRef, closeTerminalMutation, storeCloseTerminal],
   );
+  const openDelegatedSubagentsInPanel = useCallback(() => {
+    if (!activeThreadRef || delegatedSubagentChildren.length === 0) return;
+    const store = useRightPanelStore.getState();
+    for (const child of delegatedSubagentChildren) {
+      store.openSubagent(activeThreadRef, child.id);
+    }
+  }, [activeThreadRef, delegatedSubagentChildren]);
   const activateRightPanelSurface = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
@@ -5041,6 +5061,15 @@ function ChatViewContent(props: ChatViewProps) {
           onPendingChange={handleFilePendingChange}
         />
       </Suspense>
+    ) : activeRightPanelSurface?.kind === "subagent" ? (
+      <DelegatedSubagentPanel
+        parentThreadRef={activeThreadRef}
+        subagentThreadRef={scopeThreadRef(
+          activeThreadRef.environmentId,
+          activeRightPanelSurface.threadId,
+        )}
+        timestampFormat={timestampFormat}
+      />
     ) : null
   ) : null;
 
@@ -5138,6 +5167,8 @@ function ChatViewContent(props: ChatViewProps) {
                 contentInsetEndAdjustment={composerOverlayHeight}
                 onIsAtEndChange={onIsAtEndChange}
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                delegatedSubagentCount={delegatedSubagentChildren.length}
+                onOpenDelegatedSubagents={openDelegatedSubagentsInPanel}
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}

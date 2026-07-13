@@ -419,6 +419,20 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("opens delegated subagent surfaces beside the parent thread", () => {
+    const childId = ThreadId.make("child-1");
+    useRightPanelStore.getState().openSubagent(refA, childId);
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: `subagent:${childId}`,
+      surfaces: [{ id: `subagent:${childId}`, kind: "subagent", threadId: childId }],
+    });
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe(
+      "subagent",
+    );
+  });
+
   it("reconciles browser surfaces without deleting other surface kinds", () => {
     useRightPanelStore.getState().openTerminal(refA, "term-1");
     useRightPanelStore.getState().openBrowser(refA, "tab-a");
